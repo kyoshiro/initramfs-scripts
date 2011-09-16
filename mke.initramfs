@@ -1,0 +1,28 @@
+#!/bin/sh
+# creating a new initramfs with lzma compression
+# /usr/src/mke.initramfs
+# called from within initramfs directory e.g. /usr/src/initramfs
+
+if [ -z "$(grep boot /etc/mtab)" ]; then
+	echo "Mounting boot..."
+	sudo mount /boot
+fi
+
+print_date="$(date +'%d.%m.%Y %r')"
+
+file_date="$(date +'%Y%m%d_%H%M')"
+
+echo "$print_date" >> lastchange
+
+find . -print0 | cpio -ov -0 --format=newc | lzma -9 > ../initramfs.cpio.lzma
+
+if [ -n `find /boot/ -name initramfs.lzma` ]; then
+	echo "Found old initramfs.lzma"
+	if [ -n `find /boot/ -name initramfs.lzma.bak` ]; then
+		mv /boot/initramfs.lzma.bak /boot/initramfs.bak_$file_date
+	fi
+	mv /boot/initramfs.lzma /boot/initramfs.lzma.bak
+fi
+
+cp ../initramfs.cpio.lzma /boot/initramfs.lzma
+

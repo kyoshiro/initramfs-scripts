@@ -1,0 +1,63 @@
+#!/bin/busybox sh
+# initramfs init script
+# /usr/src/initramfs/init
+
+# defaults if no arguments where given:
+crypt_source="/dev/sda4"
+crypt_target="sda4_crypt"
+
+bin_exist() {
+	[ ! -e "/bin/${1}" ] && [ ! -e "/sbin/${1}" ] && die "Error ${1} not found."
+}
+
+die() {
+	echo "Dropping you into a minimal shell..."
+	exec /bin/sh
+}
+
+do_encrypt() {
+	# dm-crypt - we need o encrypt first before anything other can happen
+	echo "Waiting for encrypted filesystems to be opened..."
+	cryptsetup -T 5 luksOpen "${crypt_source}" "${crypt_target}" || die
+}
+
+do_lvm() {
+	#lvm - Looking for the volume groups if filesystem have been unlocked
+	lvm vgscan --mknodes
+	echo "Looking for available volume groups..."
+	lvm vgchange -ay
+}
+
+do_mount() {
+	#root filesystem - mounting root is always a good idea
+	mount /dev/mapper/vg_gentoo-rootfs /newroot
+}
+
+do_switch() {
+	#unmount pseudo FS - to make switch_root possible
+	umount /sys
+	umount /proc
+	# switch root - work on real root from here
+	echo "Got it, switching to real_root..."
+	exec /bin/busybox switch_root /newroot /sbin/init ${CMDLINE}
+}
+
+main() {
+	echo "Waiting for kernel and starting init..."
+	sleep 2
+	export PATH=/sbin:/bin
+	# mount /proc and /sys
+	mount -t proc proc /proc
+	CMDLINE=`cat /proc/cmdline`
+	mount -t sysfs sysfs /sys
+	bin_exist "cryptsetup"
+	do_encrypt
+	bin_exist "lvm"
+	do_lvm
+	bin_exist "mount"
+	do_mount
+	do_switch
+}
+
+# starting init calling main
+main
